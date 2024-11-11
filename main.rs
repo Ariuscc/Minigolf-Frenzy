@@ -10,7 +10,6 @@ struct Ball {
     aiming: bool,
 }
 
-
 #[derive(Component)]
 struct Hole;
 
@@ -22,6 +21,11 @@ struct CameraController {
     speed: f32,
 }
 
+#[derive(Component)]
+struct Line;
+
+#[derive(Component)]
+struct MessageText;
 
 fn main() {
     App::new()
@@ -32,6 +36,7 @@ fn main() {
         .add_systems(FixedUpdate, check_ball_in_hole)
         .add_systems(FixedUpdate, camera_movement)
         .add_systems(FixedUpdate, aiming_system)
+        .add_systems(FixedUpdate, update_message_system)
         .add_systems(FixedUpdate, update_ball_position)
         .run();
 }
@@ -40,9 +45,10 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>, // Dodano ładowanie zasobu czcionki
 ) {
     // Ball entity
-    commands.spawn((
+    commands.spawn(( 
         PbrBundle {
             mesh: meshes.add(Sphere::default()),
             material: materials.add(Color::WHITE),
@@ -50,7 +56,7 @@ fn setup(
             ..default()
         },
         Ball {
-            direction: Vec3::X,  // Początkowy kierunek na osi X
+            direction: Vec3::X,
             power: 0.0,
             aiming: true,
         },
@@ -58,11 +64,11 @@ fn setup(
     ));
 
     // Hole entity
-    commands.spawn((
+    commands.spawn(( 
         PbrBundle {
-        mesh: meshes.add(Circle::new(0.75)),
-        material: materials.add(Color::BLACK),
-        transform: Transform::from_xyz(5.0, 0.0, 5.0),
+            mesh: meshes.add(Circle::new(0.75)),
+            material: materials.add(Color::BLACK),
+            transform: Transform::from_xyz(5.0, 0.0, 5.0),
             ..default()
         },
         Hole,
@@ -72,7 +78,7 @@ fn setup(
     commands.spawn(PointLightBundle {
         point_light: PointLight {
             shadows_enabled: true,
-            intensity: 10_000_000.,
+            intensity: 10_000_000.0,
             range: 100.0,
             shadow_depth_bias: 0.2,
             ..default()
@@ -82,14 +88,30 @@ fn setup(
     });
 
     // Camera
-    commands.spawn((Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 7., 14.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
-        ..default()
-    }, 
-    CameraController { speed:10.0},
-));
-}
+    commands.spawn(( 
+        Camera3dBundle {
+            transform: Transform::from_xyz(0.0, 7.0, 14.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
+            ..default()
+        },
+        CameraController { speed: 10.0 },
+    ));
 
+    // Text entity
+    commands.spawn(TextBundle {
+        text: Text::from_section(
+            "Press SPACE to hit the ball",
+            TextStyle {
+                font: asset_server.load("fonts/TepoLalang.ttf"), // Upewnij się, że masz czcionkę
+                font_size: 40.0,
+                color: Color::WHITE,
+            },
+        ),
+        ..default()
+    })
+    .insert(MessageText)
+    .insert(Transform::from_translation(Vec3::new(0.0, 2.0, 0.0))) // Pozycja tekstu na ekranie
+    .insert(GlobalTransform::default());
+}
 
 fn ball_movement_system(
     mut query: Query<(&mut Ball, &mut Velocity)>,
@@ -110,133 +132,6 @@ fn ball_movement_system(
     }
 }
 
-
-fn check_ball_in_hole(
-    ball_query: Query<&Transform, With<Ball>>,
-    hole_query: Query<&Transform, With<Hole>>,
-    mut exit: EventWriter<AppExit>,
-) {
-    let ball_transform = ball_query.single();
-    let hole_transform = hole_query.single();
-
-    let distance = ball_transform.translation.distance(hole_transform.translation);
-
-    // Check if the ball is close enough to the hole
-    if distance < 0.60 {
-        println!("Ball is in the hole!");
-        exit.send(AppExit::Success); // Close the game
-    }
-}
-
-fn camera_movement(
-    keys: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-    mut query: Query<(&CameraController, &mut Transform), With<Camera3d>>,
-) {
-    let (controller, mut transform) = query.single_mut();
-    let mut direction = Vec3::ZERO;
-
-    // Horizontal movement (WSAD)
-    if keys.pressed(KeyCode::KeyW) {
-        direction += *transform.forward();
-    }
-    if keys.pressed(KeyCode::KeyS) {
-        direction -= *transform.forward();
-    }
-    if keys.pressed(KeyCode::KeyA) {
-        direction -= *transform.right();
-    }
-    if keys.pressed(KeyCode::KeyD) {
-        direction += *transform.right();
-    }
-
-    // Vertical movement (Q/E)
-    if keys.pressed(KeyCode::KeyQ) {
-        direction.y -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyE) {
-        direction.y += 1.0;
-    }
-
-    // Normalize direction to avoid diagonal speed boost
-    if direction.length() > 0.0 {
-        direction = direction.normalize();
-    }
-
-    // Apply the movement
-    transform.translation += direction * controller.speed * time.delta_seconds();
-}
-
-fn aiming_system(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Ball, &Transform)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut commands: Commands,
-
-) {
-    let (mut ball, transform) = query.single_mut();
-    
-    if ball.aiming {
-        // Zmiana kierunku przy użyciu strzałek
-        if keys.pressed(KeyCode::ArrowLeft) {
-            let rotation = Quat::from_rotation_y(0.05); // Obracamy o mały kąt
-            ball.direction = rotation * ball.direction;
-        }
-        if keys.pressed(KeyCode::ArrowRight) {
-            let rotation = Quat::from_rotation_y(-0.05);
-            ball.direction = rotation * ball.direction;
-        }
-
-        // Zmiana mocy uderzenia strzałkami w górę i dół
-        if keys.pressed(KeyCode::ArrowUp) {
-            ball.power = (ball.power + 0.1).min(10.0); // Maksymalna moc
-        }
-        if keys.pressed(KeyCode::ArrowDown) {
-            ball.power = (ball.power - 0.1).max(0.0); // Minimalna moc
-        }
-
-        // Rysowanie linii kierunku
-        draw_line(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            transform.translation,
-            transform.translation + ball.direction * ball.power,
-        );
-
-        // Uderzenie piłki (zatwierdzenie kierunku i mocy)
-        if keys.just_pressed(KeyCode::Space) {
-            ball.aiming = false; // Przestajemy celować
-        }
-    }
-}
-
-fn draw_line(    
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    start: Vec3,
-    end: Vec3,) {
-    let mut mesh = Mesh::new(PrimitiveTopology::LineList, default());
-    let vertices = vec![start, end];
-    let indices = Indices::U32(vec![0, 1]);
-
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
-    mesh.insert_indices(indices);
-    
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(mesh),
-        material: materials.add(StandardMaterial {
-            base_color: Color::WHITE, // Dla lepszej widoczności ustawiamy linię na biały kolor
-            emissive: Color::WHITE.into(),   // Biała emisja, aby linia była jaśniejsza
-            ..default()
-        }),
-        ..default()
-    });
-}
-
 fn update_ball_position(
     time: Res<Time>,
     mut query: Query<(&mut Velocity, &mut Transform), With<Ball>>,
@@ -254,7 +149,135 @@ fn update_ball_position(
 
     // Jeśli prędkość jest bardzo mała, zatrzymaj piłkę
     if velocity.0.length() < stop_threshold {
-        velocity.0 = Vec3::ZERO;
+        // velocity.0 = Vec3::ZERO;
         println!("Piłka się zatrzymała.");
     }
+}
+
+fn aiming_system(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut query: Query<(&mut Ball, &Transform)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut commands: Commands,
+    line_query: Query<Entity, With<Line>>, // Zapytanie do usunięcia poprzednich linii
+) {
+    let (mut ball, transform) = query.single_mut();
+    
+    if ball.aiming {
+        // Usuwanie poprzednich linii
+        for line_entity in line_query.iter() {
+            commands.entity(line_entity).despawn();
+        }
+
+        if keys.pressed(KeyCode::ArrowLeft) {
+            let rotation = Quat::from_rotation_y(0.05);
+            ball.direction = rotation * ball.direction;
+        }
+        if keys.pressed(KeyCode::ArrowRight) {
+            let rotation = Quat::from_rotation_y(-0.05);
+            ball.direction = rotation * ball.direction;
+        }
+
+        if keys.pressed(KeyCode::ArrowUp) {
+            ball.power = (ball.power + 0.1).min(10.0);
+        }
+        if keys.pressed(KeyCode::ArrowDown) {
+            ball.power = (ball.power - 0.1).max(0.0);
+        }
+
+        // Rysowanie nowej linii
+        draw_line(&mut meshes, transform.translation, transform.translation + ball.direction * ball.power, &mut commands);
+
+        if keys.just_pressed(KeyCode::Space) {
+            ball.aiming = false;
+        }
+    }
+}
+
+fn draw_line(
+    meshes: &mut ResMut<Assets<Mesh>>, 
+    start: Vec3, 
+    end: Vec3, 
+    commands: &mut Commands,
+) {
+    let mut mesh = Mesh::new(PrimitiveTopology::LineList,  default() );
+    let vertices = vec![start, end];
+    let indices = Indices::U32(vec![0, 1]);
+
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
+    mesh.insert_indices(indices);
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(mesh),
+            material: Default::default(), // Tutaj możesz ustawić przezroczystość lub inny wygląd
+            ..default()
+        },
+        Line, // Dodanie komponentu "Line" dla łatwego usuwania później
+    ));
+}
+
+fn update_message_system(
+    query: Query<&Ball>,
+    mut text_query: Query<(&mut Text, &MessageText)>,
+) {
+    let ball = query.single();
+
+    let mut text = text_query.single_mut();
+    if ball.aiming {
+        text.0.sections[0].value = "Press SPACE to hit the ball".to_string();
+    } else {
+        text.0.sections[0].value = "Ball is moving...".to_string();
+    }
+}
+
+fn check_ball_in_hole(
+    ball_query: Query<&Transform, With<Ball>>,
+    hole_query: Query<&Transform, With<Hole>>,
+    mut exit: EventWriter<AppExit>,
+) {
+    let ball_transform = ball_query.single();
+    let hole_transform = hole_query.single();
+
+    let distance = ball_transform.translation.distance(hole_transform.translation);
+
+    if distance < 0.60 {
+        println!("Ball is in the hole!");
+        exit.send(AppExit::Success);
+    }
+}
+
+fn camera_movement(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    mut query: Query<(&CameraController, &mut Transform), With<Camera3d>>,
+) {
+    let (controller, mut transform) = query.single_mut();
+    let mut direction = Vec3::ZERO;
+
+    if keys.pressed(KeyCode::KeyW) {
+        direction += *transform.forward();
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        direction -= *transform.forward();
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        direction -= *transform.right();
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        direction += *transform.right();
+    }
+
+    if keys.pressed(KeyCode::KeyQ) {
+        direction.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyE) {
+        direction.y += 1.0;
+    }
+
+    if direction.length() > 0.0 {
+        direction = direction.normalize();
+    }
+
+    transform.translation += direction * controller.speed * time.delta_seconds();
 }
