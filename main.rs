@@ -3,6 +3,30 @@ use bevy::app::AppExit;
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::render::mesh::Indices;
 
+const BG_COLOR: Color = Color::srgb(0.4, 0.8, 0.3);
+
+
+
+fn main() {
+    App::new()
+    .add_plugins(DefaultPlugins)
+    .insert_resource(ClearColor(BG_COLOR))
+    .add_systems(Startup, setup)
+    .add_systems(FixedUpdate,
+        (
+        camera_movement,
+        ball_movement_system,
+        update_ball_position,
+        aiming_system,
+        update_message_system,
+        check_ball_in_hole,
+         )
+        .chain(),
+         )
+    .run();
+}
+
+
 #[derive(Component)]
 struct Ball {
     direction: Vec3,
@@ -27,19 +51,10 @@ struct Line;
 #[derive(Component)]
 struct MessageText;
 
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .insert_resource(ClearColor(Color::srgb(0.3, 0.7, 0.3)))
-        .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, ball_movement_system)
-        .add_systems(FixedUpdate, check_ball_in_hole)
-        .add_systems(FixedUpdate, camera_movement)
-        .add_systems(FixedUpdate, aiming_system)
-        .add_systems(FixedUpdate, update_message_system)
-        .add_systems(FixedUpdate, update_ball_position)
-        .run();
-}
+#[derive(Component)]
+struct WoodenObstacle;
+
+
 
 fn setup(
     mut commands: Commands,
@@ -50,9 +65,9 @@ fn setup(
     // Ball entity
     commands.spawn(( 
         PbrBundle {
-            mesh: meshes.add(Sphere::default()),
+            mesh: meshes.add(Sphere::new(0.6)),
             material: materials.add(Color::WHITE),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            transform: Transform::from_xyz(0.0, 0.4, 0.0),
             ..default()
         },
         Ball {
@@ -73,6 +88,21 @@ fn setup(
         },
         Hole,
     ));
+
+    //Wooden Obstacle entity
+
+    commands.spawn((
+        PbrBundle{
+            mesh: meshes.add(Cuboid:: new(2.0, 1.0, 3.0)),
+            material: materials.add(Color::srgb(0.9,0.7, 0.2)),
+            transform: Transform::from_xyz(0.0, 0.25, 5.0),
+            ..default()
+        },
+        WoodenObstacle,
+    ));
+
+
+
 
     // Light
     commands.spawn(PointLightBundle {
@@ -96,20 +126,27 @@ fn setup(
         CameraController { speed: 10.0 },
     ));
 
+    //Audio
+    commands.spawn(AudioBundle {
+        source: asset_server.load("sounds/ambience_wind.ogg"),
+        ..default()
+    }); 
+    
+
     // Text entity
     commands.spawn(TextBundle {
         text: Text::from_section(
             "Press SPACE to hit the ball",
             TextStyle {
                 font: asset_server.load("fonts/TepoLalang.ttf"), // Upewnij się, że masz czcionkę
-                font_size: 40.0,
+                font_size: 50.0,
                 color: Color::WHITE,
             },
         ),
         ..default()
     })
     .insert(MessageText)
-    .insert(Transform::from_translation(Vec3::new(0.0, 2.0, 0.0))) // Pozycja tekstu na ekranie
+    .insert(Transform::from_translation(Vec3::new(0.0, 4.0, 0.0))) // Pozycja tekstu na ekranie
     .insert(GlobalTransform::default());
 }
 
@@ -136,7 +173,7 @@ fn update_ball_position(
     time: Res<Time>,
     mut query: Query<(&mut Velocity, &mut Transform), With<Ball>>,
 ) {
-    let friction: f32 = 0.95; // Współczynnik tarcia - im mniejszy, tym większe tarcie
+    let friction: f32 = 0.96; // Współczynnik tarcia - im mniejszy, tym większe tarcie
     let stop_threshold: f32 = 0.1; // Próg, poniżej którego piłka uznawana jest za zatrzymaną
 
     let (mut velocity, mut transform) = query.single_mut();
@@ -149,7 +186,7 @@ fn update_ball_position(
 
     // Jeśli prędkość jest bardzo mała, zatrzymaj piłkę
     if velocity.0.length() < stop_threshold {
-        // velocity.0 = Vec3::ZERO;
+         velocity.0 = Vec3::ZERO;
         println!("Piłka się zatrzymała.");
     }
 }
@@ -234,27 +271,56 @@ fn update_message_system(
 fn check_ball_in_hole(
     ball_query: Query<&Transform, With<Ball>>,
     hole_query: Query<&Transform, With<Hole>>,
-    mut exit: EventWriter<AppExit>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut text_query: Query<(&mut Text, &MessageText)>,
+    //keys: Res<ButtonInput<KeyCode>>,
+    //mut exit: EventWriter<AppExit>,
+    
 ) {
+    use std::{thread, time};
     let ball_transform = ball_query.single();
     let hole_transform = hole_query.single();
-
+    let wait = time::Duration::from_millis(500);
+    let mut text = text_query.single_mut();
+    
     let distance = ball_transform.translation.distance(hole_transform.translation);
+    //do naprawienia, gdy pilka jest w dolku to dziwne rzeczy sie dzieja i nie mozna wylaczyc
+    
+    let mut win_condition = false;
 
-    if distance < 0.60 {
+    if distance < 0.55 {
+        text.0.sections[0].value = "Ball in the hole!".to_string();
+       
+        thread::sleep(wait);
         println!("Ball is in the hole!");
-        exit.send(AppExit::Success);
+        win_condition = true;
     }
+    if win_condition == true{
+        commands.spawn(AudioBundle {
+            source: asset_server.load("sounds/fanfare.ogg"),
+            ..default()
+        });
+        thread::sleep(wait);
+        //exit.send(AppExit::Success);
+    }
+
 }
 
 fn camera_movement(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     mut query: Query<(&CameraController, &mut Transform), With<Camera3d>>,
+    mut exit: EventWriter<AppExit>,
 ) {
     let (controller, mut transform) = query.single_mut();
     let mut direction = Vec3::ZERO;
-
+    
+    if keys.pressed(KeyCode::KeyE)
+    {
+        exit.send(AppExit::Success); // zrobic wychodzenie pod przycisk E
+    }
+    
     if keys.pressed(KeyCode::KeyW) {
         direction += *transform.forward();
     }
@@ -267,17 +333,17 @@ fn camera_movement(
     if keys.pressed(KeyCode::KeyD) {
         direction += *transform.right();
     }
-
+    
     if keys.pressed(KeyCode::KeyQ) {
         direction.y -= 1.0;
     }
     if keys.pressed(KeyCode::KeyE) {
         direction.y += 1.0;
     }
-
+    
     if direction.length() > 0.0 {
         direction = direction.normalize();
     }
-
+    
     transform.translation += direction * controller.speed * time.delta_seconds();
 }
