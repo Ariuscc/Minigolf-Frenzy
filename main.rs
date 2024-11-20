@@ -12,14 +12,22 @@ fn main() {
     .add_plugins(DefaultPlugins)
     .insert_resource(ClearColor(BG_COLOR))
     .add_systems(Startup, setup)
+    .add_systems(Update,
+        (
+            aiming_system,
+            camera_movement,
+
+            
+        ) 
+    )
     .add_systems(FixedUpdate,
         (
-        camera_movement,
-        ball_movement_system,
-        update_ball_position,
-        aiming_system,
+            obstacle_collision,
+            ball_movement_system,
+            update_ball_position,
         update_message_system,
         check_ball_in_hole,
+
          )
         .chain(),
          )
@@ -83,24 +91,42 @@ fn setup(
         PbrBundle {
             mesh: meshes.add(Circle::new(0.75)),
             material: materials.add(Color::BLACK),
-            transform: Transform::from_xyz(5.0, 0.0, 5.0),
-            ..default()
+            transform: Transform
+            {
+                translation: Vec3::new(5.0, 0.0, 5.0),
+                rotation: Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2), //obrocenie dolka poziomo, bez tego kolko stoi pionowo
+                ..default()
+            },
+            ..default() 
         },
         Hole,
     ));
 
     //Wooden Obstacle entity
 
-    commands.spawn((
-        PbrBundle{
-            mesh: meshes.add(Cuboid:: new(2.0, 1.0, 3.0)),
-            material: materials.add(Color::srgb(0.9,0.7, 0.2)),
-            transform: Transform::from_xyz(0.0, 0.25, 5.0),
-            ..default()
-        },
-        WoodenObstacle,
-    ));
+    let obstacle_cords = vec!
+    [
+        Vec3::new(2.0, 0.25, 4.0),
+        Vec3::new(10.0, 0.25, 2.0),
+        Vec3::new(-15.0, 0.25, -10.0),
+        Vec3::new(-10.0, 0.25, 8.0),
 
+
+    ];
+
+    for coordinates in obstacle_cords
+    {
+        commands.spawn((
+            PbrBundle{
+                mesh: meshes.add(Cuboid:: new(4.0, 1.0, 4.0)),
+                material: materials.add(Color::srgb(0.9,0.7, 0.2)),
+                transform: Transform::from_translation(coordinates),
+                ..default()
+            },
+            WoodenObstacle,
+        ));
+        
+    }
 
 
 
@@ -146,7 +172,7 @@ fn setup(
         ..default()
     })
     .insert(MessageText)
-    .insert(Transform::from_translation(Vec3::new(0.0, 4.0, 0.0))) // Pozycja tekstu na ekranie
+    .insert(Transform::from_translation(Vec3::new(5.0, 4.0, 0.0))) // Pozycja tekstu na ekranie
     .insert(GlobalTransform::default());
 }
 
@@ -316,29 +342,35 @@ fn camera_movement(
     let (controller, mut transform) = query.single_mut();
     let mut direction = Vec3::ZERO;
     
-    if keys.pressed(KeyCode::KeyE)
+    if keys.pressed(KeyCode::Escape)
     {
         exit.send(AppExit::Success); // zrobic wychodzenie pod przycisk E
     }
     
-    if keys.pressed(KeyCode::KeyW) {
+    if keys.pressed(KeyCode::KeyW) { // przyblizanie
         direction += *transform.forward();
     }
     if keys.pressed(KeyCode::KeyS) {
         direction -= *transform.forward();
     }
     if keys.pressed(KeyCode::KeyA) {
-        direction -= *transform.right();
+        direction.x -= 1.0;
     }
     if keys.pressed(KeyCode::KeyD) {
-        direction += *transform.right();
+        direction.x += 1.0;
     }
     
-    if keys.pressed(KeyCode::KeyQ) {
+    if keys.pressed(KeyCode::ControlLeft) {
         direction.y -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyE) {
+    if keys.pressed(KeyCode::ControlRight) {
         direction.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyQ) {
+        direction.z -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyE) {
+        direction.z += 1.0;
     }
     
     if direction.length() > 0.0 {
@@ -346,4 +378,24 @@ fn camera_movement(
     }
     
     transform.translation += direction * controller.speed * time.delta_seconds();
+}
+
+fn obstacle_collision 
+(
+    mut ball_query: Query<(&Transform, &mut Velocity), With<Ball>>,
+    woodenobstacle_query: Query<&Transform, With<WoodenObstacle>>,
+)
+{
+    let (ball_transform, mut velocity) = ball_query.single_mut();
+
+    for woodenobstacle_transform in woodenobstacle_query.iter()
+    {
+        let distance = ball_transform.translation.distance(woodenobstacle_transform.translation);
+
+        if distance < 2.6 
+        {
+            velocity.0 = Vec3::ZERO; 
+        }
+
+    }
 }
