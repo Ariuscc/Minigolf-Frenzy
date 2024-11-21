@@ -63,14 +63,14 @@ struct MessageText;
 struct WoodenObstacle;
 
 
-
+// funkcja inicjalizujaca
 fn setup(
-    mut commands: Commands,
+    mut commands: Commands, // spawnowanie obiektow
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    asset_server: Res<AssetServer>, // Dodano ładowanie zasobu czcionki
+    asset_server: Res<AssetServer>, // ladowanie assetow z folderu
 ) {
-    // Ball entity
+    // pilka
     commands.spawn(( 
         PbrBundle {
             mesh: meshes.add(Sphere::new(0.6)),
@@ -86,7 +86,7 @@ fn setup(
         Velocity(Vec3::ZERO),
     ));
 
-    // Hole entity
+    // dolek
     commands.spawn(( 
         PbrBundle {
             mesh: meshes.add(Circle::new(0.75)),
@@ -102,7 +102,7 @@ fn setup(
         Hole,
     ));
 
-    //Wooden Obstacle entity
+    // drewniana przeszkoda
 
     let obstacle_cords = vec!
     [
@@ -130,7 +130,7 @@ fn setup(
 
 
 
-    // Light
+    // oswietlenie sceny
     commands.spawn(PointLightBundle {
         point_light: PointLight {
             shadows_enabled: true,
@@ -143,7 +143,7 @@ fn setup(
         ..default()
     });
 
-    // Camera
+    // spawn kamery
     commands.spawn(( 
         Camera3dBundle {
             transform: Transform::from_xyz(0.0, 7.0, 14.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
@@ -152,7 +152,7 @@ fn setup(
         CameraController { speed: 10.0 },
     ));
 
-    //Audio
+    // audio
     commands.spawn(AudioBundle {
         source: asset_server.load("sounds/ambience_wind.ogg"),
         ..default()
@@ -204,7 +204,7 @@ fn update_ball_position(
 
     let (mut velocity, mut transform) = query.single_mut();
     
-    // Zaktualizuj pozycję na podstawie prędkości
+    // Zmiana polozenia ze wzoru deltaX = V*t
     transform.translation += velocity.0 * time.delta_seconds();
 
     // Redukcja prędkości w zależności od współczynnika tarcia
@@ -233,11 +233,23 @@ fn aiming_system(
         }
 
         if keys.pressed(KeyCode::ArrowLeft) {
-            let rotation = Quat::from_rotation_y(0.05);
+            let rotation = Quat::from_rotation_y(0.03);
             ball.direction = rotation * ball.direction;
         }
         if keys.pressed(KeyCode::ArrowRight) {
-            let rotation = Quat::from_rotation_y(-0.05);
+            let rotation = Quat::from_rotation_y(-0.03);
+            ball.direction = rotation * ball.direction;
+        }
+
+        // TODO celowanie gora-dol
+        if keys.pressed(KeyCode::ShiftLeft) 
+        {
+            let rotation = Quat::from_rotation_x(0.03);
+            ball.direction = rotation * ball.direction;
+        }
+        if keys.pressed(KeyCode::ShiftRight) 
+        {
+            let rotation = Quat::from_rotation_x(-0.03);
             ball.direction = rotation * ball.direction;
         }
 
