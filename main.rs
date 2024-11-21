@@ -23,7 +23,6 @@ fn main() {
     .add_systems(FixedUpdate,
         (
             obstacle_collision,
-            ball_movement_system,
             update_ball_position,
         update_message_system,
         check_ball_in_hole,
@@ -176,33 +175,16 @@ fn setup(
     .insert(GlobalTransform::default());
 }
 
-fn ball_movement_system(
-    mut query: Query<(&mut Ball, &mut Velocity)>,
 
-) {
-    let (mut ball, mut velocity) = query.single_mut();
-
-
-
-    // Logowanie, aby zobaczyć, czy piłka przestaje celować i jest "uderzana"
-    if !ball.aiming {
-        println!("Piłka jest uderzana! Kierunek: {:?}, Moc: {}", ball.direction, ball.power);
-        
-        velocity.0 = ball.direction * ball.power * 10.0; // Skaluje moc na prędkość
-        ball.aiming = true; // Przygotuj do kolejnego celowania
-        ball.power = 0.0; // Zresetuj moc
-
-    }
-}
 
 fn update_ball_position(
     time: Res<Time>,
-    mut query: Query<(&mut Velocity, &mut Transform), With<Ball>>,
+    mut query: Query<(&mut Velocity, &mut Transform, &mut Ball)>
 ) {
     let friction: f32 = 0.96; // Współczynnik tarcia - im mniejszy, tym większe tarcie
     let stop_threshold: f32 = 0.1; // Próg, poniżej którego piłka uznawana jest za zatrzymaną
 
-    let (mut velocity, mut transform) = query.single_mut();
+    let (mut velocity, mut transform, mut ball) = query.single_mut();
     
     // Zmiana polozenia ze wzoru deltaX = V*t
     transform.translation += velocity.0 * time.delta_seconds();
@@ -210,6 +192,15 @@ fn update_ball_position(
     // Redukcja prędkości w zależności od współczynnika tarcia
     velocity.0 *= friction;
 
+    // Logowanie, aby zobaczyć, czy piłka przestaje celować i jest "uderzana"
+   if !ball.aiming {
+       println!("Piłka jest uderzana! Kierunek: {:?}, Moc: {}", ball.direction, ball.power);
+       
+       velocity.0 = ball.direction * ball.power * 10.0; // Skaluje moc na prędkość
+       ball.aiming = true; // Przygotuj do kolejnego celowania
+       ball.power = 0.0; // Zresetuj moc
+
+   }
     // Jeśli prędkość jest bardzo mała, zatrzymaj piłkę
     if velocity.0.length() < stop_threshold {
          velocity.0 = Vec3::ZERO;
@@ -406,7 +397,7 @@ fn obstacle_collision
 
         if distance < 2.6 
         {
-            velocity.0 = Vec3::ZERO; 
+            velocity.0 = -velocity.0; 
         }
 
     }
