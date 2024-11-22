@@ -120,13 +120,30 @@ fn setup(
     {
         commands.spawn((
             PbrBundle{
-                mesh: meshes.add(Cuboid:: new(4.0, 1.0, 4.0)),
+                mesh: meshes.add(Circle::new(2.0)),
                 material: materials.add(Color::srgb(0.9,0.7, 0.2)),
-                transform: Transform::from_translation(coordinates),
+                transform: Transform
+                {
+                    
+                    translation: (coordinates),
+                    rotation: Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+                    ..default()
+                },
                 ..default()
             },
             WoodenObstacle,
         ));
+
+        commands.spawn( 
+            PbrBundle
+            {
+                mesh: meshes.add(Torus::new(1.0,2.0)),
+                material: materials.add(Color::srgb(0.9,0.8,0.5)),
+                transform: Transform::from_translation(coordinates),
+                ..default()
+            }
+
+        );
         
     }
 
