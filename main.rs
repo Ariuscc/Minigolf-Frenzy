@@ -448,6 +448,9 @@ fn obstacle_collision
     {
         let distance = ball_transform.translation.distance(woodenobstacle_transform.translation);
 
+        //wzor z forum : https://www.physicsforums.com/threads/general-formula-for-reflection-direction.426594/
+        // The general formula for reflection direction is: R = I - 2(N · I)N, where R is the reflected ray, I is the incident ray, and N is the normal vector of the surface.
+
         if distance < 2.7 
         {
             // Oblicz normalną powierzchni (wektor od przeszkody do piłki)
