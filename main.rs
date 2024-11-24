@@ -5,8 +5,8 @@ use bevy::render::mesh::Indices;
 //use bevy::gltf::Gltf;
 
 
+const G: f32 = -9.81; // Stała grawitacyjna
 const BG_COLOR: Color = Color::srgb(0.4, 0.8, 0.3);
-const GRAVITY: f32 = -9.81; // Stała grawitacyjna
 
 
 
@@ -218,15 +218,14 @@ fn update_ball_position(
 
     let (mut velocity, mut transform, mut ball) = query.single_mut();
 
-        // Grawitacja (dodawana tylko wtedy, gdy piłka jest powyżej poziomu gruntu)
+        // ruch ukosny, predkosc pionowa: Vy= g*t
         if transform.translation.y > ground_y_position {
-            velocity.0.y += GRAVITY * time.delta_seconds();
+            velocity.0.y += G * time.delta_seconds();
         } 
         if transform.translation.y < ground_y_position  
         {
-            // Jeśli piłka jest poniżej lub na poziomie gruntu, ustaw ją na poziom ziemi
             transform.translation.y = ground_y_position;
-            velocity.0.y = 0.0; // Zerowanie pionowej prędkości po dotknięciu ziemi
+            velocity.0.y = 0.0;
         }
 
     
@@ -251,6 +250,27 @@ fn update_ball_position(
          velocity.0 = Vec3::ZERO;
         println!("Piłka się zatrzymała.");
     }
+
+ // Obrót piłki
+ let velocity_magnitude = velocity.0.length();
+
+ if velocity_magnitude > stop_threshold {
+     // Obliczanie osi obrotu jako iloczyn wektorowy
+     // (Piłka obraca się w płaszczyźnie XZ, więc oś obrotu to oś Y)
+     let rotation_axis = -velocity.0.cross(Vec3::Y).normalize();
+
+     // Ilość obrotu zależy od prędkości piłki
+     let rotation_speed = velocity_magnitude; 
+
+     // Tworzymy kwaternion obrotu
+     let rotation = Quat::from_axis_angle(rotation_axis, rotation_speed * time.delta_seconds());
+
+     // Aplikujemy obrót do transformacji piłki
+     transform.rotation = rotation * transform.rotation;
+ }
+
+
+
 }
 
 fn aiming_system(
@@ -293,7 +313,7 @@ fn aiming_system(
         }
 
         if keys.pressed(KeyCode::ArrowUp) {
-            ball.power = (ball.power + 0.1).min(10.0);
+            ball.power = (ball.power + 0.1).min(8.0);
         }
         if keys.pressed(KeyCode::ArrowDown) {
             ball.power = (ball.power - 0.1).max(0.0);
