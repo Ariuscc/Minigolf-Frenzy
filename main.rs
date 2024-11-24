@@ -6,7 +6,7 @@ use bevy::render::mesh::Indices;
 
 
 const BG_COLOR: Color = Color::srgb(0.4, 0.8, 0.3);
-const GRAVITY: f32 = -9.8; // Stała grawitacyjna
+const GRAVITY: f32 = -9.81; // Stała grawitacyjna
 
 
 
@@ -44,6 +44,7 @@ struct Ball {
     direction: Vec3,
     power: f32,
     aiming: bool,
+    strokes_counter: u32,
 }
 
 #[derive(Component)]
@@ -91,6 +92,7 @@ fn setup(
             direction: Vec3::X,
             power: 0.0,
             aiming: true,
+            strokes_counter: 0,
         },
         Velocity(Vec3::ZERO),
     ));
@@ -128,7 +130,7 @@ fn setup(
         commands.spawn((
             PbrBundle{
                 mesh: meshes.add(Circle::new(2.0)),
-                material: materials.add(Color::srgb(0.9,0.7, 0.2)),
+                material: materials.add(Color::srgb(0.4, 0.8, 0.3)),
                 transform: Transform
                 {
                     
@@ -144,7 +146,7 @@ fn setup(
             PbrBundle
             {
                 mesh: meshes.add(Torus::new(1.0,2.0)),
-                material: materials.add(Color::srgb(0.9,0.8,0.5)),
+                material: materials.add(Color::srgb(0.7,0.4, 0.1)),
                 transform: Transform::from_translation(coordinates),
                 ..default()
             }
@@ -191,7 +193,7 @@ fn setup(
         text: Text::from_section(
             "Press SPACE to hit the ball",
             TextStyle {
-                font: asset_server.load("fonts/TepoLalang.ttf"), // Upewnij się, że masz czcionkę
+                font: asset_server.load("fonts/TepoLalang.ttf"),
                 font_size: 50.0,
                 color: Color::WHITE,
             },
@@ -199,7 +201,7 @@ fn setup(
         ..default()
     })
     .insert(MessageText)
-    .insert(Transform::from_translation(Vec3::new(5.0, 4.0, 0.0))) // Pozycja tekstu na ekranie
+    .insert(Transform::from_translation(Vec3::new(10.0, 10.0, 0.0))) 
     .insert(GlobalTransform::default());
 }
 
@@ -219,17 +221,19 @@ fn update_ball_position(
         // Grawitacja (dodawana tylko wtedy, gdy piłka jest powyżej poziomu gruntu)
         if transform.translation.y > ground_y_position {
             velocity.0.y += GRAVITY * time.delta_seconds();
-        } else {
+        } 
+        if transform.translation.y < ground_y_position  
+        {
             // Jeśli piłka jest poniżej lub na poziomie gruntu, ustaw ją na poziom ziemi
             transform.translation.y = ground_y_position;
             velocity.0.y = 0.0; // Zerowanie pionowej prędkości po dotknięciu ziemi
         }
 
     
-    // Zmiana polozenia ze wzoru deltaX = V*t
+    //zmiana polozenia ze wzoru deltaX = V*t
     transform.translation += velocity.0 * time.delta_seconds();
 
-    // Redukcja prędkości w zależności od współczynnika tarcia
+    //tarcie zeby pilka nie leciala w nieskonczonosc
     velocity.0 *= friction;
 
 
@@ -254,12 +258,15 @@ fn aiming_system(
     mut query: Query<(&mut Ball, &Transform)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
-    line_query: Query<Entity, With<Line>>, // Zapytanie do usunięcia poprzednich linii
+    line_query: Query<Entity, With<Line>>,
+    mut text_query: Query<(&mut Text, &MessageText)>,
+    asset_server: Res<AssetServer>,
+
 ) {
     let (mut ball, transform) = query.single_mut();
     
     if ball.aiming {
-        // Usuwanie poprzednich linii
+        //usuwanie starych linii celowania
         for line_entity in line_query.iter() {
             commands.entity(line_entity).despawn();
         }
@@ -292,12 +299,22 @@ fn aiming_system(
             ball.power = (ball.power - 0.1).max(0.0);
         }
 
-        // Rysowanie nowej linii
+        // linia celowania
         draw_line(&mut meshes, transform.translation, transform.translation + ball.direction * ball.power, &mut commands);
 
         if keys.just_pressed(KeyCode::Space) {
             ball.aiming = false;
+            ball.strokes_counter +=1;
+
+            commands.spawn(AudioBundle {
+                source: asset_server.load("sounds/club_hit.ogg"),
+                ..default()
+            });
         }
+
+        let mut text = text_query.single_mut();
+        text.0.sections[0].value= format! ("Number of strokes: {}", ball.strokes_counter);
+
     }
 }
 
@@ -317,10 +334,10 @@ fn draw_line(
     commands.spawn((
         PbrBundle {
             mesh: meshes.add(mesh),
-            material: Default::default(), // Tutaj możesz ustawić przezroczystość lub inny wygląd
+            material: Default::default(),
             ..default()
-        },
-        Line, // Dodanie komponentu "Line" dla łatwego usuwania później
+        }, //komponent line do despawnowania starych linii
+        Line, 
     ));
 }
 
@@ -360,10 +377,8 @@ fn check_ball_in_hole(
     let trajectory_distance = ball_transform.translation.distance(*last_position);
     
     let distance = ball_transform.translation.distance(hole_transform.translation);
-    //do naprawienia, gdy pilka jest w dolku to dziwne rzeczy sie dzieja i nie mozna wylaczyc
+    //TODO do naprawienia, obecna wersja nie wystarcza
     
-    let mut win_condition = false;
-
     if trajectory_distance > 0.5 {
         draw_trajectory_point(&mut meshes, ball_transform.translation, &mut commands);
 
@@ -376,15 +391,10 @@ fn check_ball_in_hole(
        
         thread::sleep(wait);
         println!("Ball is in the hole!");
-        win_condition = true;
-    }
-    if win_condition == true{
         commands.spawn(AudioBundle {
             source: asset_server.load("sounds/fanfare.ogg"),
             ..default()
         });
-        thread::sleep(wait);
-        //exit.send(AppExit::Success);
     }
 
 }
@@ -468,12 +478,10 @@ fn draw_trajectory_point(
     position: Vec3, 
     commands: &mut Commands,
 ) {
-    let mesh = Mesh::from(Sphere::new(0.05));
     
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(mesh),
-            material: Default::default(), // Możesz ustawić np. przezroczystość lub kolor
+            mesh: meshes.add(Sphere::new(0.05)),
             transform: Transform::from_translation(position),
             ..default()
         },
